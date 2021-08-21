@@ -1183,6 +1183,7 @@ var isuconlist []IsuCondition
 var mu sync.Mutex
 
 func bulkloop() {
+	isuconlist = nil
 	go func() {
 		for range time.Tick(500 * time.Millisecond) {
 			if len(isuconlist) == 0 {
