@@ -504,7 +504,7 @@ func getIsuList(c echo.Context) error {
 	isuList := []Isu{}
 	err = tx.Select(
 		&isuList,
-		"SELECT * FROM `isu` WHERE `jia_user_id` = ? ORDER BY `id` DESC",
+		"SELECT id, jia_isu_uuid, name, `character` FROM `isu` WHERE `jia_user_id` = ? ORDER BY `id` DESC",
 		jiaUserID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
@@ -1100,7 +1100,7 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 // ISUのコンディションの文字列からコンディションレベルを計算
 func calculateConditionLevel(condition string) (string, error) {
 	var conditionLevel string
-		
+
 	warnCount := strings.Count(condition, "=true")
 	switch warnCount {
 	case 0:
@@ -1116,12 +1116,11 @@ func calculateConditionLevel(condition string) (string, error) {
 	return conditionLevel, nil
 }
 
-
 // GET /api/trend
 // ISUの性格毎の最新のコンディション情報
 func getTrend2(c echo.Context) error {
 
- 	type tempIsu struct {
+	type tempIsu struct {
 		ID         int       `db:"id" json:"id"`
 		JIAIsuUUID string    `db:"jia_isu_uuid" json:"jia_isu_uuid"`
 		Character  string    `db:"character" json:"character"`
@@ -1130,8 +1129,8 @@ func getTrend2(c echo.Context) error {
 	}
 
 	type condStruct struct {
-		characterInfoIsuConditions []*TrendCondition
-		characterWarningIsuConditions []*TrendCondition
+		characterInfoIsuConditions     []*TrendCondition
+		characterWarningIsuConditions  []*TrendCondition
 		characterCriticalIsuConditions []*TrendCondition
 	}
 
@@ -1156,7 +1155,7 @@ func getTrend2(c echo.Context) error {
 	}
 	for _, isu := range isuList {
 		// ない場合はcontinue
-		if(isu.Condition == ""|| isu.Timestamp == time.Time{}){
+		if (isu.Condition == "" || isu.Timestamp == time.Time{}) {
 			continue
 		}
 
@@ -1166,35 +1165,35 @@ func getTrend2(c echo.Context) error {
 		}
 
 		trendCondition := TrendCondition{
-			ID: isu.ID,
-			Timestamp:  isu.Timestamp.Unix(),
+			ID:        isu.ID,
+			Timestamp: isu.Timestamp.Unix(),
 		}
 		conds := charaCondMap[isu.Character]
 		switch conditionLevel {
-			case "info":
-				conds.characterInfoIsuConditions = append(conds.characterInfoIsuConditions, &trendCondition)
-			case "warning":
-				conds.characterWarningIsuConditions = append(conds.characterWarningIsuConditions, &trendCondition)
-			case "critical":
-				conds.characterCriticalIsuConditions = append(conds.characterCriticalIsuConditions, &trendCondition)
+		case "info":
+			conds.characterInfoIsuConditions = append(conds.characterInfoIsuConditions, &trendCondition)
+		case "warning":
+			conds.characterWarningIsuConditions = append(conds.characterWarningIsuConditions, &trendCondition)
+		case "critical":
+			conds.characterCriticalIsuConditions = append(conds.characterCriticalIsuConditions, &trendCondition)
 		}
 		charaCondMap[isu.Character] = conds
 	}
 
 	res := []TrendResponse{}
-	for chara, conds := range charaCondMap{
-		if(conds.characterInfoIsuConditions == nil){
+	for chara, conds := range charaCondMap {
+		if conds.characterInfoIsuConditions == nil {
 			conds.characterInfoIsuConditions = make([]*TrendCondition, 0)
 		}
-		if(conds.characterWarningIsuConditions == nil){
+		if conds.characterWarningIsuConditions == nil {
 			conds.characterWarningIsuConditions = make([]*TrendCondition, 0)
 		}
-		if(conds.characterCriticalIsuConditions == nil){
+		if conds.characterCriticalIsuConditions == nil {
 			conds.characterCriticalIsuConditions = make([]*TrendCondition, 0)
 		}
 
 		sort.Slice(conds.characterInfoIsuConditions, func(i, j int) bool {
-		return conds.characterInfoIsuConditions[i].Timestamp > conds.characterInfoIsuConditions[j].Timestamp
+			return conds.characterInfoIsuConditions[i].Timestamp > conds.characterInfoIsuConditions[j].Timestamp
 		})
 		sort.Slice(conds.characterWarningIsuConditions, func(i, j int) bool {
 			return conds.characterWarningIsuConditions[i].Timestamp > conds.characterWarningIsuConditions[j].Timestamp
