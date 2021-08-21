@@ -1184,7 +1184,7 @@ var mu sync.Mutex
 
 func bulkloop() {
 	go func() {
-		for range time.Tick(1 * time.Millisecond) {
+		for range time.Tick(500 * time.Millisecond) {
 			if len(isuconlist) == 0 {
 				continue
 			}
