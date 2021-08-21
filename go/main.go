@@ -19,8 +19,6 @@ import (
 	"sync"
 	"time"
 
-	_ "net/http/pprof"
-
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -225,9 +223,6 @@ func init() {
 }
 
 func main() {
-	go func() {
-		fmt.Println(http.ListenAndServe("0.0.0.0:6060", nil))
-	}()
 
 	e := echo.New()
 	// e.Debug = true
@@ -1294,25 +1289,42 @@ func getTrend(c echo.Context) error {
 var isuconlist []IsuCondition
 var mu sync.Mutex
 
+var mu1 sync.Mutex
+
+var isLoopRunning = false
+
 func bulkloop() {
+	isLoopRunning = true
 	isuconlist = nil
 	go func() {
 		for range time.Tick(500 * time.Millisecond) {
+			mu1.Lock()
 			if len(isuconlist) == 0 {
 				fmt.Println("pass")
+				mu1.Unlock()
 				continue
 			}
-			_, err := db.NamedExec(
-				"INSERT INTO `isu_condition`"+
-					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-					"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)",
-				isuconlist)
-			if err != nil {
-				log.Errorf("db error: %v", err)
-				continue
+			sliceSize := len(isuconlist)
+			for i := 0; i < sliceSize; i += 1000 {
+				end := i + 1000
+				if sliceSize < end {
+					end = sliceSize
+				}
+				_, err := db.NamedExec(
+					"INSERT INTO `isu_condition`"+
+						"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+						"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)",
+					isuconlist[i:end])
+				if err != nil {
+					log.Errorf("db error: %v", err)
+					mu1.Unlock()
+					continue
+				}
 			}
+
 			isuconlist = nil
 			fmt.Println("success!")
+			mu1.Unlock()
 		}
 	}()
 
@@ -1321,6 +1333,9 @@ func bulkloop() {
 // POST /api/condition/:jia_isu_uuid
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) (reterr error) {
+	if !isLoopRunning {
+		bulkloop()
+	}
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
 	//	dropProbability := 0.8
 	//	if rand.Float64() <= dropProbability {
@@ -1349,7 +1364,6 @@ func postIsuCondition(c echo.Context) (reterr error) {
 		if reterr != nil && !errors.Is(reterr, c.NoContent(http.StatusAccepted)) {
 			isuconlist = initisuconlist
 		}
-
 		mu.Unlock()
 	}()
 
