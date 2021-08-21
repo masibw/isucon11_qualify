@@ -1185,8 +1185,9 @@ var mu sync.Mutex
 func bulkloop() {
 	isuconlist = nil
 	go func() {
-		for range time.Tick(500 * time.Millisecond) {
+		for range time.Tick(900 * time.Millisecond) {
 			if len(isuconlist) == 0 {
+				fmt.Println("pass")
 				continue
 			}
 			_, err := db.NamedExec(
