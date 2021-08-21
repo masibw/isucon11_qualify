@@ -1120,14 +1120,9 @@ func getTrend2(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
 	// characterごとにconditionの配列を持つ構造体を作る
 	charaCondMap := make(map[string]condStruct, len(characterList))
-
-	for _, c := range charaCondMap{
-		c.characterInfoIsuConditions = make([]*TrendCondition, 0)
-		c.characterWarningIsuConditions = make([]*TrendCondition, 0)
-		c.characterCriticalIsuConditions = make([]*TrendCondition, 0)
-	}
 
 	isuList := []*tempIsu{}
 	// 椅子を全部取得して
@@ -1142,6 +1137,7 @@ func getTrend2(c echo.Context) error {
 		if err != nil {
 			continue
 		}
+
 		trendCondition := TrendCondition{
 			ID: isu.ID,
 			Timestamp:  isu.Timestamp.Unix(),
@@ -1160,6 +1156,17 @@ func getTrend2(c echo.Context) error {
 
 	res := []TrendResponse{}
 	for chara, conds := range charaCondMap{
+		log.Print(chara,conds)
+		if(conds.characterInfoIsuConditions == nil){
+			conds.characterInfoIsuConditions = make([]*TrendCondition, 0)
+		}
+		if(conds.characterWarningIsuConditions == nil){
+			conds.characterWarningIsuConditions = make([]*TrendCondition, 0)
+		}
+		if(conds.characterCriticalIsuConditions == nil){
+			conds.characterCriticalIsuConditions = make([]*TrendCondition, 0)
+		}
+
 		sort.Slice(conds.characterInfoIsuConditions, func(i, j int) bool {
 		return conds.characterInfoIsuConditions[i].Timestamp > conds.characterInfoIsuConditions[j].Timestamp
 		})
@@ -1212,6 +1219,7 @@ func getTrend(c echo.Context) error {
 				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC",
 				isu.JIAIsuUUID,
 			)
+			log.Print(conditions[0].Timestamp)
 			if err != nil {
 				c.Logger().Errorf("db error: %v", err)
 				return c.NoContent(http.StatusInternalServerError)
@@ -1257,7 +1265,6 @@ func getTrend(c echo.Context) error {
 				Critical:  characterCriticalIsuConditions,
 			})
 	}
-	log.Print(res);
 	return c.JSON(http.StatusOK, res)
 }
 
