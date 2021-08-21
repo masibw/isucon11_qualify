@@ -1149,13 +1149,18 @@ func getTrend2(c echo.Context) error {
 	isuList := []*tempIsu{}
 	// 椅子を全部取得して
 	err = db.Select(&isuList,
-		"select i.id, i.jia_isu_uuid, i.character, COALESCE((select isuc.condition from isu_condition as isuc where i.jia_isu_uuid = isuc.jia_isu_uuid order by timestamp desc limit 1), '')as `condition`, (select isuc.timestamp from isu_condition as isuc where i.jia_isu_uuid = isuc.jia_isu_uuid order by timestamp desc limit 1)as timestamp from isu as i order by timestamp desc")
+		"select i.id, i.jia_isu_uuid, i.character, COALESCE((select isuc.condition from isu_condition as isuc where i.jia_isu_uuid = isuc.jia_isu_uuid order by timestamp desc limit 1), '')as `condition`, COALESCE((select isuc.timestamp from isu_condition as isuc where i.jia_isu_uuid = isuc.jia_isu_uuid order by timestamp desc limit 1),0)as timestamp from isu as i order by timestamp desc")
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	for _, isu := range isuList {
 		// ない場合はcontinue
+
+		if(isu.Timestamp == time.Time{}){
+			log.Print("timestamp")
+			continue
+		}
 		if(isu.Condition == ""|| isu.Timestamp == time.Time{}){
 			continue
 		}
@@ -1299,7 +1304,7 @@ var mu sync.Mutex
 func bulkloop() {
 	isuconlist = nil
 	go func() {
-		for range time.Tick(300 * time.Millisecond) {
+		for range time.Tick(900 * time.Millisecond) {
 			if len(isuconlist) == 0 {
 				fmt.Println("pass")
 				continue
@@ -1324,7 +1329,7 @@ func bulkloop() {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) (reterr error) {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.8
+	dropProbability := 0.5
 	if rand.Float64() <= dropProbability {
 		c.Logger().Warnf("drop post isu condition request")
 		return c.NoContent(http.StatusAccepted)
