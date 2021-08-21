@@ -20,8 +20,6 @@ import (
 	"sync"
 	"time"
 
-	_ "net/http/pprof"
-
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -226,9 +224,6 @@ func init() {
 }
 
 func main() {
-	go func() {
-		fmt.Println(http.ListenAndServe("0.0.0.0:6060", nil))
-	}()
 
 	e := echo.New()
 	// e.Debug = true
