@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"database/sql"
 	"encoding/json"
@@ -12,9 +13,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "net/http/pprof"
@@ -191,22 +194,17 @@ func NewMySQLConnectionEnv() *MySQLConnectionEnv {
 }
 
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
-	log.Warn("hoge3")
 	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
 	db, err := sqlx.Open("mysql", dsn)
 	if err != nil {
 		log.Fatalf("failed to connect to DB: %s.", err.Error())
 	}
-	log.Warn("hoge4")
 
 	for {
-			log.Warn("hoge5-0")
 		err := db.Ping()
 		if err == nil {
-			log.Warn("hoge5")
 			break
 		}
-			log.Warn("hoge5-1")
 		log.Warn("retry connect db by zatuyou")
 		log.Warn(err)
 		time.Sleep(time.Second * 1)
@@ -261,10 +259,8 @@ func main() {
 	e.GET("/register", getIndex)
 	e.Static("/assets", frontendContentsPath+"/assets")
 
-	log.Warn("hoge")
 	mySQLConnectionData = NewMySQLConnectionEnv()
 
-	log.Warn("hoge2")
 	var err error
 	db, err = mySQLConnectionData.ConnectDB()
 	if err != nil {
@@ -281,7 +277,24 @@ func main() {
 	}
 
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
-	e.Logger.Fatal(e.Start(serverPort))
+
+	// Start server
+	go func() {
+		if err := e.Start(serverPort); err != nil && err != http.ErrServerClosed {
+			e.Logger.Fatal("shutting down the server")
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server with a timeout of 10 seconds.
+	// Use a buffered channel to avoid missing signals as recommended for signal.Notify
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt)
+	<-quit
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		e.Logger.Fatal(err)
+	}
 }
 
 func getSession(r *http.Request) (*sessions.Session, error) {
@@ -357,6 +370,8 @@ func postInitialize(c echo.Context) error {
 		c.Logger().Errorf("db error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	bulkloop()
 
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "go",
@@ -1182,9 +1197,36 @@ func getTrend(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
+var isuconlist []IsuCondition
+var mu sync.Mutex
+
+func bulkloop() {
+	isuconlist = nil
+	go func() {
+		for range time.Tick(300 * time.Millisecond) {
+			if len(isuconlist) == 0 {
+				fmt.Println("pass")
+				continue
+			}
+			_, err := db.NamedExec(
+				"INSERT INTO `isu_condition`"+
+					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+					"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)",
+				isuconlist)
+			if err != nil {
+				log.Errorf("db error: %v", err)
+				continue
+			}
+			isuconlist = nil
+			fmt.Println("success!")
+		}
+	}()
+
+}
+
 // POST /api/condition/:jia_isu_uuid
 // ISUからのコンディションを受け取る
-func postIsuCondition(c echo.Context) error {
+func postIsuCondition(c echo.Context) (reterr error) {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
 	dropProbability := 0.8
 	if rand.Float64() <= dropProbability {
@@ -1205,46 +1247,55 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "bad request body")
 	}
 
-	tx, err := db.Beginx()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
-
 	var count int
-	err = tx.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
+	mu.Lock()
+	initisuconlist := isuconlist
+	defer func() {
+		// 戻す
+		if reterr != nil && !errors.Is(reterr, c.NoContent(http.StatusAccepted)) {
+			isuconlist = initisuconlist
+		}
+
+		mu.Unlock()
+	}()
+
+	err = db.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+		reterr = c.NoContent(http.StatusInternalServerError)
+		return
 	}
 	if count == 0 {
-		return c.String(http.StatusNotFound, "not found: isu")
+		reterr = c.String(http.StatusNotFound, "not found: isu")
+		return
 	}
 
 	for _, cond := range req {
 		timestamp := time.Unix(cond.Timestamp, 0)
 
 		if !isValidConditionFormat(cond.Condition) {
-			return c.String(http.StatusBadRequest, "bad request body")
+			reterr = c.String(http.StatusBadRequest, "bad request body")
+			return
 		}
+		var isucon IsuCondition
+		isucon.JIAIsuUUID = jiaIsuUUID
+		isucon.Condition = cond.Condition
+		isucon.Timestamp = timestamp
+		isucon.IsSitting = cond.IsSitting
+		isucon.Message = cond.Message
 
-		_, err = tx.Exec(
-			"INSERT INTO `isu_condition`"+
-				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-				"	VALUES (?, ?, ?, ?, ?)",
-			jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
-		if err != nil {
-			c.Logger().Errorf("db error: %v", err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+		isuconlist = append(isuconlist, isucon)
 
-	}
+		//		_, err = db.Exec(
+		//			"INSERT INTO `isu_condition`"+
+		//				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+		//				"	VALUES (?, ?, ?, ?, ?)",
+		//			jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
+		//		if err != nil {
+		//			c.Logger().Errorf("db error: %v", err)
+		//			return c.NoContent(http.StatusInternalServerError)
+		//		}
 
-	err = tx.Commit()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	return c.NoContent(http.StatusAccepted)
