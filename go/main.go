@@ -506,7 +506,7 @@ func getIsuList2(c echo.Context) error {
 	isuList := []IsuQuery{}
 	err = tx.Select(
 		&isuList,
-		"SELECT i.id, i.jia_isu_uuid, i.jia_user_id, i.name, i.character, c.timestamp, c.is_sitting, c.condition, c.message FROM `isu` AS i LEFT JOIN `isu_condition` AS c ON i.jia_isu_uuid = ( SELECT c1.jia_isu_uuid FROM `isu_condition` AS c1 WHERE c1.jia_isu_uuid=i.jia_isu_uuid ORDER BY c1.timestamp DESC LIMIT 1 ) WHERE `jia_user_id` = ? ORDER BY `id` DESC",
+		"SELECT i.id, i.jia_isu_uuid, i.jia_user_id, i.name, i.character, c.timestamp, c.is_sitting, c.condition, c.message FROM `isu` AS i LEFT OUTER JOIN `isu_condition` AS c ON i.jia_isu_uuid = ( SELECT c1.jia_isu_uuid FROM `isu_condition` AS c1 WHERE c1.jia_isu_uuid=i.jia_isu_uuid ORDER BY c1.timestamp DESC LIMIT 1 ) WHERE `jia_user_id` = ? ORDER BY `id` DESC",
 		jiaUserID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
