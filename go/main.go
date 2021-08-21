@@ -1291,7 +1291,10 @@ var mu sync.Mutex
 
 var mu1 sync.Mutex
 
+var isLoopRunning = false
+
 func bulkloop() {
+	isLoopRunning = true
 	isuconlist = nil
 	go func() {
 		for range time.Tick(500 * time.Millisecond) {
@@ -1330,6 +1333,9 @@ func bulkloop() {
 // POST /api/condition/:jia_isu_uuid
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) (reterr error) {
+	if !isLoopRunning {
+		bulkloop()
+	}
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
 	//	dropProbability := 0.8
 	//	if rand.Float64() <= dropProbability {
