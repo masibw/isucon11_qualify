@@ -1188,7 +1188,7 @@ func bulkloop() {
 			if len(isuconlist) == 0 {
 				continue
 			}
-			_, err := db.Exec(
+			_, err := db.NamedExec(
 				"INSERT INTO `isu_condition`"+
 					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
 					"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)",
