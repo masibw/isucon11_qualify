@@ -1295,25 +1295,17 @@ func getTrend(c echo.Context) error {
 var isuconlist []IsuCondition
 var mu sync.Mutex
 
+var mu1 sync.Mutex
+
 func bulkloop() {
 	isuconlist = nil
 	go func() {
+		mu1.Lock()
 		for range time.Tick(300 * time.Millisecond) {
 			if len(isuconlist) == 0 {
 				fmt.Println("pass")
 				continue
 			}
-			// raw := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-			// thrice := [][]int{}
-			// sliceSize := len(raw)
-
-			// for i := 0; i < sliceSize; i += 3 {
-			//     end := i + 3
-			//     if sliceSize < end{
-			// 	end = sliceSize
-			//     }
-			//     thrice = append(thrice, raw[i:end])
-			// }
 			sliceSize := len(isuconlist)
 			for i := 0; i < sliceSize; i += 1000 {
 				end := i + 1000
@@ -1327,6 +1319,7 @@ func bulkloop() {
 					isuconlist[i:end])
 				if err != nil {
 					log.Errorf("db error: %v", err)
+					mu1.Unlock()
 					continue
 				}
 			}
@@ -1334,6 +1327,7 @@ func bulkloop() {
 			isuconlist = nil
 			fmt.Println("success!")
 		}
+		mu1.Unlock()
 	}()
 
 }
@@ -1369,7 +1363,6 @@ func postIsuCondition(c echo.Context) (reterr error) {
 		if reterr != nil && !errors.Is(reterr, c.NoContent(http.StatusAccepted)) {
 			isuconlist = initisuconlist
 		}
-
 		mu.Unlock()
 	}()
 
