@@ -1178,7 +1178,6 @@ func getTrend2(c echo.Context) error {
 
 	res := []TrendResponse{}
 	for chara, conds := range charaCondMap{
-		log.Print(chara,conds)
 		if(conds.characterInfoIsuConditions == nil){
 			conds.characterInfoIsuConditions = make([]*TrendCondition, 0)
 		}
@@ -1241,7 +1240,6 @@ func getTrend(c echo.Context) error {
 				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC",
 				isu.JIAIsuUUID,
 			)
-			log.Print(conditions[0].Timestamp)
 			if err != nil {
 				c.Logger().Errorf("db error: %v", err)
 				return c.NoContent(http.StatusInternalServerError)
