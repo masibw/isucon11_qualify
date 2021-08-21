@@ -192,22 +192,17 @@ func NewMySQLConnectionEnv() *MySQLConnectionEnv {
 }
 
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
-	log.Warn("hoge3")
 	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
 	db, err := sqlx.Open("mysql", dsn)
 	if err != nil {
 		log.Fatalf("failed to connect to DB: %s.", err.Error())
 	}
-	log.Warn("hoge4")
 
 	for {
-		log.Warn("hoge5-0")
 		err := db.Ping()
 		if err == nil {
-			log.Warn("hoge5")
 			break
 		}
-		log.Warn("hoge5-1")
 		log.Warn("retry connect db by zatuyou")
 		log.Warn(err)
 		time.Sleep(time.Second * 1)
@@ -262,10 +257,8 @@ func main() {
 	e.GET("/register", getIndex)
 	e.Static("/assets", frontendContentsPath+"/assets")
 
-	log.Warn("hoge")
 	mySQLConnectionData = NewMySQLConnectionEnv()
 
-	log.Warn("hoge2")
 	var err error
 	db, err = mySQLConnectionData.ConnectDB()
 	if err != nil {
@@ -280,8 +273,6 @@ func main() {
 		e.Logger.Fatalf("missing: POST_ISUCONDITION_TARGET_BASE_URL")
 		return
 	}
-
-	bulkloop()
 
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	// TODO: graceful
@@ -361,6 +352,8 @@ func postInitialize(c echo.Context) error {
 		c.Logger().Errorf("db error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	bulkloop()
 
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "go",
