@@ -1303,15 +1303,34 @@ func bulkloop() {
 				fmt.Println("pass")
 				continue
 			}
-			_, err := db.NamedExec(
-				"INSERT INTO `isu_condition`"+
-					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-					"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)",
-				isuconlist)
-			if err != nil {
-				log.Errorf("db error: %v", err)
-				continue
+			// raw := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+			// thrice := [][]int{}
+			// sliceSize := len(raw)
+
+			// for i := 0; i < sliceSize; i += 3 {
+			//     end := i + 3
+			//     if sliceSize < end{
+			// 	end = sliceSize
+			//     }
+			//     thrice = append(thrice, raw[i:end])
+			// }
+			sliceSize := len(isuconlist)
+			for i := 0; i < sliceSize; i += 1000 {
+				end := i + 1000
+				if sliceSize < end {
+					end = sliceSize
+				}
+				_, err := db.NamedExec(
+					"INSERT INTO `isu_condition`"+
+						"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+						"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)",
+					isuconlist[i:end])
+				if err != nil {
+					log.Errorf("db error: %v", err)
+					continue
+				}
 			}
+
 			isuconlist = nil
 			fmt.Println("success!")
 		}
