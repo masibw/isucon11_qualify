@@ -1197,6 +1197,7 @@ func bulkloop() {
 				log.Errorf("db error: %v", err)
 				continue
 			}
+			isuconlist = nil
 			fmt.Println("success!")
 		}
 	}()
