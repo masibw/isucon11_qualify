@@ -1156,11 +1156,6 @@ func getTrend2(c echo.Context) error {
 	}
 	for _, isu := range isuList {
 		// ない場合はcontinue
-
-		if(isu.Timestamp == time.Time{}){
-			log.Print("timestamp")
-			continue
-		}
 		if(isu.Condition == ""|| isu.Timestamp == time.Time{}){
 			continue
 		}
