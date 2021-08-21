@@ -1188,16 +1188,14 @@ func bulkloop() {
 			if len(isuconlist) == 0 {
 				continue
 			}
-			for _, isucon := range isuconlist {
-				_, err := db.Exec(
-					"INSERT INTO `isu_condition`"+
-						"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-						"	VALUES (?, ?, ?, ?, ?)",
-					isucon.JIAIsuUUID, isucon.Timestamp, isucon.IsSitting, isucon.Condition, isucon.Message)
-				if err != nil {
-					log.Errorf("db error: %v", err)
-					continue
-				}
+			_, err := db.Exec(
+				"INSERT INTO `isu_condition`"+
+					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+					"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)",
+				isuconlist)
+			if err != nil {
+				log.Errorf("db error: %v", err)
+				continue
 			}
 		}
 	}()
