@@ -246,7 +246,7 @@ func main() {
 	e.POST("/api/auth", postAuthentication)
 	e.POST("/api/signout", postSignout)
 	e.GET("/api/user/me", getMe)
-	e.GET("/api/isu", getIsuList2)
+	e.GET("/api/isu", getIsuList)
 	e.POST("/api/isu", postIsu)
 	e.GET("/api/isu/:jia_isu_uuid", getIsuID)
 	e.GET("/api/isu/:jia_isu_uuid/icon", getIsuIcon)
@@ -468,90 +468,6 @@ func getMe(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
-type IsuQuery struct {
-	ID         int       `db:"id" json:"id"`
-	JIAIsuUUID string    `db:"jia_isu_uuid" json:"jia_isu_uuid"`
-	Name       string    `db:"name" json:"name"`
-	CreatedAt  time.Time `db:"created_at" json:"-"`
-	UpdatedAt  time.Time `db:"updated_at" json:"-"`
-	// これそのままbase64?か何かで入っているので出す
-	// けどまだボトルネックじゃなさそう?
-	Image     []byte    `db:"image" json:"-"`
-	Character string    `db:"character" json:"character"`
-	JIAUserID string    `db:"jia_user_id" json:"-"`
-	Timestamp time.Time `db:"timestamp"`
-	IsSitting bool      `db:"is_sitting"`
-	Condition string    `db:"condition"`
-	Message   string    `db:"message"`
-}
-
-func getIsuList2(c echo.Context) error {
-	jiaUserID, errStatusCode, err := getUserIDFromSession(c)
-	if err != nil {
-		if errStatusCode == http.StatusUnauthorized {
-			return c.String(http.StatusUnauthorized, "you are not signed in")
-		}
-
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	tx, err := db.Beginx()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
-
-	isuList := []IsuQuery{}
-	err = tx.Select(
-		&isuList,
-		"SELECT i.id, i.jia_isu_uuid, i.jia_user_id, i.name, i.character, c.timestamp, c.is_sitting, c.condition, c.message FROM `isu` AS i LEFT OUTER JOIN `isu_condition` AS c ON i.jia_isu_uuid = ( SELECT c1.jia_isu_uuid FROM `isu_condition` AS c1 WHERE c1.jia_isu_uuid=i.jia_isu_uuid ORDER BY c1.timestamp DESC LIMIT 1 ) WHERE `jia_user_id` = ? ORDER BY `id` DESC",
-		jiaUserID)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	responseList := []GetIsuListResponse{}
-	for _, isu := range isuList {
-		foundLastCondition := true
-		var formattedCondition *GetIsuConditionResponse
-		if foundLastCondition {
-			conditionLevel, err := calculateConditionLevel(isu.Condition)
-			if err != nil {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
-			}
-
-			formattedCondition = &GetIsuConditionResponse{
-				JIAIsuUUID:     isu.JIAIsuUUID,
-				IsuName:        isu.Name,
-				Timestamp:      isu.Timestamp.Unix(),
-				IsSitting:      isu.IsSitting,
-				Condition:      isu.Condition,
-				ConditionLevel: conditionLevel,
-				Message:        isu.Message,
-			}
-		}
-
-		res := GetIsuListResponse{
-			ID:                 isu.ID,
-			JIAIsuUUID:         isu.JIAIsuUUID,
-			Name:               isu.Name,
-			Character:          isu.Character,
-			LatestIsuCondition: formattedCondition}
-		responseList = append(responseList, res)
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	return c.JSON(http.StatusOK, responseList)
-}
-
 // GET /api/isu
 // ISUの一覧を取得
 // ここをみていく
@@ -584,42 +500,63 @@ func getIsuList(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	var lastCondition []IsuCondition
+	err = tx.Select(
+		&lastCondition,
+		"SELECT jia_isu_uuid, is_sitting, `condition`, message, MAX(timestamp) as timestamp FROM `isu_condition` GROUP BY jia_isu_uuid",
+	)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 	// SELECT id, jia_isu_uuid, name, `character`
 	// FROM `isu` as isu  WHERE `jia_user_id` = ? ORDER BY `id` DESC
 	// 023c8e56-4410-484d-b7fa-702d48188d3c
 	responseList := []GetIsuListResponse{}
 	for _, isu := range isuList {
-		var lastCondition IsuCondition
+		var lastConditionSelect IsuCondition
 		foundLastCondition := true
-		// まとめられるでconditionはない場合もある
-		// SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = '023c8e56-4410-484d-b7fa-702d48188d3c' ORDER BY `timestamp` DESC LIMIT 1"
-		err = tx.Get(&lastCondition, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
-			isu.JIAIsuUUID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				foundLastCondition = false
-			} else {
-				c.Logger().Errorf("db error: %v", err)
-				return c.NoContent(http.StatusInternalServerError)
+
+		flag := false
+		for _, last := range lastCondition {
+			if isu.JIAIsuUUID == last.JIAIsuUUID {
+				flag = true
+				lastConditionSelect = last
 			}
 		}
+		if !flag {
+			foundLastCondition = false
+		}
+		// まとめられるでconditionはない場合もある
+		// SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = '023c8e56-4410-484d-b7fa-702d48188d3c' ORDER BY `timestamp` DESC LIMIT 1"
+		// err = tx.Get(&lastCondition, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
+		// 	isu.JIAIsuUUID)
+		// if err != nil {
+		// 	if errors.Is(err, sql.ErrNoRows) {
+		// 		foundLastCondition = false
+		// 	} else {
+		// 		c.Logger().Errorf("db error: %v", err)
+		// 		return c.NoContent(http.StatusInternalServerError)
+		// 	}
+		// }
 
 		var formattedCondition *GetIsuConditionResponse
 		if foundLastCondition {
-			conditionLevel, err := calculateConditionLevel(lastCondition.Condition)
+			conditionLevel, err := calculateConditionLevel(lastConditionSelect.Condition)
 			if err != nil {
 				c.Logger().Error(err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
 
 			formattedCondition = &GetIsuConditionResponse{
-				JIAIsuUUID:     lastCondition.JIAIsuUUID,
+				JIAIsuUUID:     lastConditionSelect.JIAIsuUUID,
 				IsuName:        isu.Name,
-				Timestamp:      lastCondition.Timestamp.Unix(),
-				IsSitting:      lastCondition.IsSitting,
-				Condition:      lastCondition.Condition,
+				Timestamp:      lastConditionSelect.Timestamp.Unix(),
+				IsSitting:      lastConditionSelect.IsSitting,
+				Condition:      lastConditionSelect.Condition,
 				ConditionLevel: conditionLevel,
-				Message:        lastCondition.Message,
+				Message:        lastConditionSelect.Message,
 			}
 		}
 
