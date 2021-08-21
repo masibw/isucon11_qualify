@@ -246,7 +246,7 @@ func main() {
 	e.POST("/api/auth", postAuthentication)
 	e.POST("/api/signout", postSignout)
 	e.GET("/api/user/me", getMe)
-	e.GET("/api/isu", getIsuList)
+	e.GET("/api/isu", getIsuList2)
 	e.POST("/api/isu", postIsu)
 	e.GET("/api/isu/:jia_isu_uuid", getIsuID)
 	e.GET("/api/isu/:jia_isu_uuid/icon", getIsuIcon)
@@ -501,15 +501,15 @@ func getIsuList(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	var lastCondition []IsuCondition
-	err = tx.Select(
-		&lastCondition,
-		"SELECT jia_isu_uuid, is_sitting, `condition`, message, MAX(timestamp) as timestamp FROM `isu_condition` GROUP BY jia_isu_uuid",
-	)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	// var lastCondition []IsuCondition
+	// err = tx.Select(
+	// 	&lastCondition,
+	// 	"SELECT jia_isu_uuid, is_sitting, `condition`, message, MAX(timestamp) FROM `isu_condition` GROUP BY jia_isu_uuid",
+	// )
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
 	// SELECT id, jia_isu_uuid, name, `character`
 	// FROM `isu` as isu  WHERE `jia_user_id` = ? ORDER BY `id` DESC
 	// 023c8e56-4410-484d-b7fa-702d48188d3c
@@ -518,28 +518,18 @@ func getIsuList(c echo.Context) error {
 		var lastConditionSelect IsuCondition
 		foundLastCondition := true
 
-		flag := false
-		for _, last := range lastCondition {
-			if isu.JIAIsuUUID == last.JIAIsuUUID {
-				flag = true
-				lastConditionSelect = last
-			}
-		}
-		if !flag {
-			foundLastCondition = false
-		}
 		// まとめられるでconditionはない場合もある
 		// SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = '023c8e56-4410-484d-b7fa-702d48188d3c' ORDER BY `timestamp` DESC LIMIT 1"
-		// err = tx.Get(&lastCondition, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
-		// 	isu.JIAIsuUUID)
-		// if err != nil {
-		// 	if errors.Is(err, sql.ErrNoRows) {
-		// 		foundLastCondition = false
-		// 	} else {
-		// 		c.Logger().Errorf("db error: %v", err)
-		// 		return c.NoContent(http.StatusInternalServerError)
-		// 	}
-		// }
+		err = tx.Get(&lastConditionSelect, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
+			isu.JIAIsuUUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				foundLastCondition = false
+			} else {
+				c.Logger().Errorf("db error: %v", err)
+				return c.NoContent(http.StatusInternalServerError)
+			}
+		}
 
 		var formattedCondition *GetIsuConditionResponse
 		if foundLastCondition {
