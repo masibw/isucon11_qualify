@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "net/http/pprof"
@@ -200,13 +201,13 @@ func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 	log.Warn("hoge4")
 
 	for {
-			log.Warn("hoge5-0")
+		log.Warn("hoge5-0")
 		err := db.Ping()
 		if err == nil {
 			log.Warn("hoge5")
 			break
 		}
-			log.Warn("hoge5-1")
+		log.Warn("hoge5-1")
 		log.Warn("retry connect db by zatuyou")
 		log.Warn(err)
 		time.Sleep(time.Second * 1)
@@ -280,7 +281,10 @@ func main() {
 		return
 	}
 
+	bulkloop()
+
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
+	// TODO: graceful
 	e.Logger.Fatal(e.Start(serverPort))
 }
 
@@ -1182,9 +1186,31 @@ func getTrend(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
+var isuconlist []IsuCondition
+var mu sync.Mutex
+
+func bulkloop() {
+	for range time.Tick(1 * time.Millisecond) {
+		if len(isuconlist) == 0 {
+			continue
+		}
+		for _, isucon := range isuconlist {
+			_, err := db.Exec(
+				"INSERT INTO `isu_condition`"+
+					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+					"	VALUES (?, ?, ?, ?, ?)",
+				isucon.JIAIsuUUID, isucon.Timestamp, isucon.IsSitting, isucon.Condition, isucon.Message)
+			if err != nil {
+				log.Errorf("db error: %v", err)
+				continue
+			}
+		}
+	}
+}
+
 // POST /api/condition/:jia_isu_uuid
 // ISUからのコンディションを受け取る
-func postIsuCondition(c echo.Context) error {
+func postIsuCondition(c echo.Context) (reterr error) {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
 	dropProbability := 0.8
 	if rand.Float64() <= dropProbability {
@@ -1205,46 +1231,55 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "bad request body")
 	}
 
-	tx, err := db.Beginx()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
-
 	var count int
-	err = tx.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
+	mu.Lock()
+	initisuconlist := isuconlist
+	defer func() {
+		// 戻す
+		if reterr != nil && !errors.Is(reterr, c.NoContent(http.StatusAccepted)) {
+			isuconlist = initisuconlist
+		}
+
+		mu.Unlock()
+	}()
+
+	err = db.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+		reterr = c.NoContent(http.StatusInternalServerError)
+		return
 	}
 	if count == 0 {
-		return c.String(http.StatusNotFound, "not found: isu")
+		reterr = c.String(http.StatusNotFound, "not found: isu")
+		return
 	}
 
 	for _, cond := range req {
 		timestamp := time.Unix(cond.Timestamp, 0)
 
 		if !isValidConditionFormat(cond.Condition) {
-			return c.String(http.StatusBadRequest, "bad request body")
+			reterr = c.String(http.StatusBadRequest, "bad request body")
+			return
 		}
+		var isucon IsuCondition
+		isucon.JIAIsuUUID = jiaIsuUUID
+		isucon.Condition = cond.Condition
+		isucon.Timestamp = timestamp
+		isucon.IsSitting = cond.IsSitting
+		isucon.Message = cond.Message
 
-		_, err = tx.Exec(
-			"INSERT INTO `isu_condition`"+
-				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-				"	VALUES (?, ?, ?, ?, ?)",
-			jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
-		if err != nil {
-			c.Logger().Errorf("db error: %v", err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+		isuconlist = append(isuconlist, isucon)
 
-	}
+		//		_, err = db.Exec(
+		//			"INSERT INTO `isu_condition`"+
+		//				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+		//				"	VALUES (?, ?, ?, ?, ?)",
+		//			jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
+		//		if err != nil {
+		//			c.Logger().Errorf("db error: %v", err)
+		//			return c.NoContent(http.StatusInternalServerError)
+		//		}
 
-	err = tx.Commit()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	return c.NoContent(http.StatusAccepted)
