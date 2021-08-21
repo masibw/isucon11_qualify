@@ -1300,10 +1300,11 @@ var mu1 sync.Mutex
 func bulkloop() {
 	isuconlist = nil
 	go func() {
-		mu1.Lock()
 		for range time.Tick(300 * time.Millisecond) {
+			mu1.Lock()
 			if len(isuconlist) == 0 {
 				fmt.Println("pass")
+				mu1.Unlock()
 				continue
 			}
 			sliceSize := len(isuconlist)
@@ -1326,8 +1327,8 @@ func bulkloop() {
 
 			isuconlist = nil
 			fmt.Println("success!")
+			mu1.Unlock()
 		}
-		mu1.Unlock()
 	}()
 
 }
