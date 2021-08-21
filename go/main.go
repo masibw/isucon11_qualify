@@ -1120,20 +1120,23 @@ func getTrend2(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-
 	// characterごとにconditionの配列を持つ構造体を作る
 	charaCondMap := make(map[string]condStruct, len(characterList))
 
-	isuList := []tempIsu{}
+	for _, c := range charaCondMap{
+		c.characterInfoIsuConditions = make([]*TrendCondition, 0)
+		c.characterWarningIsuConditions = make([]*TrendCondition, 0)
+		c.characterCriticalIsuConditions = make([]*TrendCondition, 0)
+	}
+
+	isuList := []*tempIsu{}
 	// 椅子を全部取得して
 	err = db.Select(&isuList,
-		"SELECT isu.id, isu.jia_isu_uuid, isu.character,isu_condition.condition, isu_condition.timestamp  FROM `isu` JOIN isu_condition ON isu.jia_isu_uuid=isu_condition.jia_isu_uuid order by isu_condition.timestamp desc")
+		"select i.id, i.jia_isu_uuid, i.character, (select isuc.condition from isu_condition as isuc where i.jia_isu_uuid = isuc.jia_isu_uuid order by timestamp desc limit 1)as `condition`, (select isuc.timestamp from isu_condition as isuc where i.jia_isu_uuid = isuc.jia_isu_uuid order by timestamp desc limit 1)as timestamp from isu as i order by timestamp desc")
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-
-
 	for _, isu := range isuList {
 		conditionLevel, err := calculateConditionLevel(isu.Condition)
 		if err != nil {
@@ -1152,6 +1155,7 @@ func getTrend2(c echo.Context) error {
 			case "critical":
 				conds.characterCriticalIsuConditions = append(conds.characterCriticalIsuConditions, &trendCondition)
 		}
+		charaCondMap[isu.Character] = conds
 	}
 
 	res := []TrendResponse{}
@@ -1173,7 +1177,6 @@ func getTrend2(c echo.Context) error {
 				Critical:  conds.characterCriticalIsuConditions,
 			})
 	}
-
 	return c.JSON(http.StatusOK, res)
 }
 
@@ -1254,7 +1257,7 @@ func getTrend(c echo.Context) error {
 				Critical:  characterCriticalIsuConditions,
 			})
 	}
-
+	log.Print(res);
 	return c.JSON(http.StatusOK, res)
 }
 
