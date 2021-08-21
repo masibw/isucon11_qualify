@@ -1183,22 +1183,25 @@ var isuconlist []IsuCondition
 var mu sync.Mutex
 
 func bulkloop() {
-	for range time.Tick(1 * time.Millisecond) {
-		if len(isuconlist) == 0 {
-			continue
-		}
-		for _, isucon := range isuconlist {
-			_, err := db.Exec(
-				"INSERT INTO `isu_condition`"+
-					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-					"	VALUES (?, ?, ?, ?, ?)",
-				isucon.JIAIsuUUID, isucon.Timestamp, isucon.IsSitting, isucon.Condition, isucon.Message)
-			if err != nil {
-				log.Errorf("db error: %v", err)
+	go func() {
+		for range time.Tick(1 * time.Millisecond) {
+			if len(isuconlist) == 0 {
 				continue
 			}
+			for _, isucon := range isuconlist {
+				_, err := db.Exec(
+					"INSERT INTO `isu_condition`"+
+						"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+						"	VALUES (?, ?, ?, ?, ?)",
+					isucon.JIAIsuUUID, isucon.Timestamp, isucon.IsSitting, isucon.Condition, isucon.Message)
+				if err != nil {
+					log.Errorf("db error: %v", err)
+					continue
+				}
+			}
 		}
-	}
+	}()
+
 }
 
 // POST /api/condition/:jia_isu_uuid
