@@ -202,13 +202,13 @@ func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 	log.Warn("hoge4")
 
 	for {
-			log.Warn("hoge5-0")
+		log.Warn("hoge5-0")
 		err := db.Ping()
 		if err == nil {
 			log.Warn("hoge5")
 			break
 		}
-			log.Warn("hoge5-1")
+		log.Warn("hoge5-1")
 		log.Warn("retry connect db by zatuyou")
 		log.Warn(err)
 		time.Sleep(time.Second * 1)
@@ -469,9 +469,11 @@ func getMe(c echo.Context) error {
 }
 
 type IsuQuery struct {
-	ID         int    `db:"id" json:"id"`
-	JIAIsuUUID string `db:"jia_isu_uuid" json:"jia_isu_uuid"`
-	Name       string `db:"name" json:"name"`
+	ID         int       `db:"id" json:"id"`
+	JIAIsuUUID string    `db:"jia_isu_uuid" json:"jia_isu_uuid"`
+	Name       string    `db:"name" json:"name"`
+	CreatedAt  time.Time `db:"created_at" json:"-"`
+	UpdatedAt  time.Time `db:"updated_at" json:"-"`
 	// これそのままbase64?か何かで入っているので出す
 	// けどまだボトルネックじゃなさそう?
 	Image     []byte    `db:"image" json:"-"`
@@ -504,7 +506,7 @@ func getIsuList2(c echo.Context) error {
 	isuList := []IsuQuery{}
 	err = tx.Select(
 		&isuList,
-		"SELECT i.id, i.jia_isu_uuid, i.jia_user_id, i.name, i.character, c.timestamp, c.is_sitting, c.condition, c.message, c.created_at FROM `isu` AS i LEFT JOIN `isu_condition` AS c ON i.jia_isu_uuid = ( SELECT c1.jia_isu_uuid FROM `isu_condition` AS c1 WHERE c1.jia_isu_uuid=i.jia_isu_uuid ORDER BY c1.timestamp DESC LIMIT 1 ) WHERE `jia_user_id` = ? ORDER BY `id` DESC",
+		"SELECT i.id, i.jia_isu_uuid, i.jia_user_id, i.name, i.character, c.timestamp, c.is_sitting, c.condition, c.message FROM `isu` AS i LEFT JOIN `isu_condition` AS c ON i.jia_isu_uuid = ( SELECT c1.jia_isu_uuid FROM `isu_condition` AS c1 WHERE c1.jia_isu_uuid=i.jia_isu_uuid ORDER BY c1.timestamp DESC LIMIT 1 ) WHERE `jia_user_id` = ? ORDER BY `id` DESC",
 		jiaUserID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
