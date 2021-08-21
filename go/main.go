@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -190,6 +192,20 @@ func NewMySQLConnectionEnv() *MySQLConnectionEnv {
 
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
+	db, err := sqlx.Open("mysql", dsn)
+	if err != nil {
+		log.Fatalf("failed to connect to DB: %s.", err.Error())
+	}
+
+	for {
+		err := db.Ping()
+		if err == nil {
+			break
+		}
+		fmt.Println("retry connect db by zatuyou")
+		fmt.Println(err)
+		time.Sleep(time.Second * 1)
+	}
 	return sqlx.Open("mysql", dsn)
 }
 
@@ -207,6 +223,10 @@ func init() {
 }
 
 func main() {
+	go func() {
+		fmt.Println(http.ListenAndServe("0.0.0.0:6060", nil))
+	}()
+
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(log.DEBUG)
