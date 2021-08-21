@@ -182,7 +182,7 @@ func getEnv(key string, defaultValue string) string {
 
 func NewMySQLConnectionEnv() *MySQLConnectionEnv {
 	return &MySQLConnectionEnv{
-		Host:     getEnv("MYSQL_HOST", "127.0.0.1"),
+		Host:     getEnv("MYSQL_HOST", "isucondition-1.t.isucon.dev"),
 		Port:     getEnv("MYSQL_PORT", "3306"),
 		User:     getEnv("MYSQL_USER", "isucon"),
 		DBName:   getEnv("MYSQL_DBNAME", "isucondition"),
@@ -191,19 +191,24 @@ func NewMySQLConnectionEnv() *MySQLConnectionEnv {
 }
 
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
+	log.Warn("hoge3")
 	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
 	db, err := sqlx.Open("mysql", dsn)
 	if err != nil {
 		log.Fatalf("failed to connect to DB: %s.", err.Error())
 	}
+	log.Warn("hoge4")
 
 	for {
+			log.Warn("hoge5-0")
 		err := db.Ping()
 		if err == nil {
+			log.Warn("hoge5")
 			break
 		}
-		fmt.Println("retry connect db by zatuyou")
-		fmt.Println(err)
+			log.Warn("hoge5-1")
+		log.Warn("retry connect db by zatuyou")
+		log.Warn(err)
 		time.Sleep(time.Second * 1)
 	}
 	return sqlx.Open("mysql", dsn)
@@ -256,8 +261,10 @@ func main() {
 	e.GET("/register", getIndex)
 	e.Static("/assets", frontendContentsPath+"/assets")
 
+	log.Warn("hoge")
 	mySQLConnectionData = NewMySQLConnectionEnv()
 
+	log.Warn("hoge2")
 	var err error
 	db, err = mySQLConnectionData.ConnectDB()
 	if err != nil {
