@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -1298,7 +1297,7 @@ var mu sync.Mutex
 func bulkloop() {
 	isuconlist = nil
 	go func() {
-		for range time.Tick(300 * time.Millisecond) {
+		for range time.Tick(500 * time.Millisecond) {
 			if len(isuconlist) == 0 {
 				fmt.Println("pass")
 				continue
@@ -1323,11 +1322,11 @@ func bulkloop() {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) (reterr error) {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.8
-	if rand.Float64() <= dropProbability {
-		c.Logger().Warnf("drop post isu condition request")
-		return c.NoContent(http.StatusAccepted)
-	}
+	//	dropProbability := 0.8
+	//	if rand.Float64() <= dropProbability {
+	//		c.Logger().Warnf("drop post isu condition request")
+	//		return c.NoContent(http.StatusAccepted)
+	//	}
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 	if jiaIsuUUID == "" {
