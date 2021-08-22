@@ -999,11 +999,15 @@ func getIsuConditions(c echo.Context) error {
 	if conditionLevelCSV == "" {
 		return c.String(http.StatusBadRequest, "missing: condition_level")
 	}
+
+	// csvから取得していそうただqueryですね
+	// どのconditionなのかを受け取っている
 	conditionLevel := map[string]interface{}{}
 	for _, level := range strings.Split(conditionLevelCSV, ",") {
 		conditionLevel[level] = struct{}{}
 	}
 
+	// start_timeの取得
 	startTimeStr := c.QueryParam("start_time")
 	var startTime time.Time
 	if startTimeStr != "" {
@@ -1014,9 +1018,10 @@ func getIsuConditions(c echo.Context) error {
 		startTime = time.Unix(startTimeInt64, 0)
 	}
 
+	// 名前だけ取得
 	var isuName string
 	err = db.Get(&isuName,
-		"SELECT name FROM `isu` WHERE `jia_isu_uuid` = ? AND `jia_user_id` = ?",
+		"SELECT name FROM `isu` WHERE `jia_isu_uuid` = ? AND `jia_user_id` = ? LIMIT 1",
 		jiaIsuUUID, jiaUserID,
 	)
 	if err != nil {
@@ -1028,6 +1033,7 @@ func getIsuConditions(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	// ここがボトルネック
 	conditionsResponse, err := getIsuConditionsFromDB(db, jiaIsuUUID, endTime, conditionLevel, startTime, conditionLimit, isuName)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
@@ -1064,7 +1070,9 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 	}
 
 	conditionsResponse := []*GetIsuConditionResponse{}
+	// conditionsが来る
 	for _, c := range conditions {
+		// conditionの計算
 		cLevel, err := calculateConditionLevel(c.Condition)
 		if err != nil {
 			continue
@@ -1081,6 +1089,9 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 				Message:        c.Message,
 			}
 			conditionsResponse = append(conditionsResponse, &data)
+		}
+		if len(conditionsResponse) > limit {
+			break
 		}
 	}
 
