@@ -1142,7 +1142,7 @@ func getTrend2(c echo.Context) error {
 	isuList := []*tempIsu{}
 	// 椅子を全部取得して
 	err = db.Select(&isuList,
-		"select i.id, i.jia_isu_uuid, i.character, COALESCE((select isuc.condition from isu_condition as isuc where i.jia_isu_uuid = isuc.jia_isu_uuid order by timestamp desc limit 1), '')as `condition`, COALESCE((select isuc.timestamp from isu_condition as isuc where i.jia_isu_uuid = isuc.jia_isu_uuid order by timestamp desc limit 1), STR_TO_DATE('0001/01/01 00:00:00', '%Y/%m/%d %H:%i:%s'))as timestamp from isu as i order by timestamp desc")
+		"select i.id, i.jia_isu_uuid, i.character, isuc.condition, isuc.timestamp from isu as i left join isu_condition as isuc on i.jia_isu_uuid = isuc.jia_isu_uuid  where isuc.timestamp = (select MAX(isuc2.timestamp) from isu_condition as isuc2 where i.jia_isu_uuid = isuc2.jia_isu_uuid limit 1) order by isuc.timestamp desc")
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
